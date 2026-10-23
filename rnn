@@ -1,0 +1,47 @@
+import numpy as np, tensorflow as tf
+import matplotlib.pyplot as plt
+from tensorflow.keras import layers, models, callbacks
+
+# DATA
+text = """deep learning is part of a broader family of machine learning methods based on
+artificial neural networks. learning can be supervised, semi-supervised or unsupervised.
+deep learning models are used in vision, speech recognition and natural language processing. """ * 5
+# file: text = open("book.txt", encoding="utf-8").read().lower()
+
+seq_len = 40
+chars = sorted(set(text))
+char2idx = {c: i for i, c in enumerate(chars)}
+idx2char = {i: c for c, i in char2idx.items()}
+vocab = len(chars)
+
+X, y = [], []
+for i in range(len(text) - seq_len):
+    X.append([char2idx[c] for c in text[i:i + seq_len]])
+    y.append(char2idx[text[i + seq_len]])
+X, y = np.array(X), np.array(y)
+
+# MODEL
+model = models.Sequential([
+    layers.Embedding(vocab, 32),
+    layers.LSTM(128),
+    layers.Dropout(0.2),
+    layers.Dense(vocab, activation="softmax")
+])
+
+model.compile(optimizer="adam", loss="sparse_categorical_crossentropy")
+
+early_stop = callbacks.EarlyStopping(monitor="loss", patience=3, restore_best_weights=True)
+history = model.fit(X, y, epochs=30, batch_size=64, callbacks=[early_stop])
+
+plt.plot(history.history["loss"]); plt.xlabel("epoch"); plt.ylabel("loss"); plt.show()
+
+# GENERATE
+generated = "deep learning is "
+for i in range(200):
+    seed = generated[-seq_len:].rjust(seq_len)
+    x = np.array([[char2idx.get(c, 0) for c in seed]])
+    probs = model.predict(x, verbose=0)[0].astype("float64")
+    probs = probs / probs.sum()
+    generated += idx2char[np.random.choice(vocab, p=probs)]
+
+print(generated)
