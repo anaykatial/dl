@@ -1,0 +1,59 @@
+import numpy as np, tensorflow as tf
+import matplotlib.pyplot as plt
+from tensorflow.keras import layers, models, regularizers, callbacks
+from tensorflow.keras.datasets import mnist
+
+# DATA
+(X_train, _), (X_test, _) = mnist.load_data()
+X_train = X_train.reshape(-1, 784) / 255.0
+X_test = X_test.reshape(-1, 784) / 255.0
+
+early_stop = callbacks.EarlyStopping(monitor="val_loss", patience=3, restore_best_weights=True)
+
+# (a) DENOISING AE
+X_train_noisy = np.clip(X_train + 0.4 * np.random.normal(size=X_train.shape), 0, 1)
+X_test_noisy = np.clip(X_test + 0.4 * np.random.normal(size=X_test.shape), 0, 1)
+
+inp = layers.Input(shape=(784,))
+x = layers.Dense(128, activation="relu")(inp)       # encoder
+x = layers.BatchNormalization()(x)
+code = layers.Dense(32, activation="relu")(x)       # code
+x = layers.Dense(128, activation="relu")(code)      # decoder
+x = layers.Dropout(0.1)(x)
+out = layers.Dense(784, activation="sigmoid")(x)
+
+dae = models.Model(inp, out)
+dae.compile(optimizer="adam", loss="mse")
+h1 = dae.fit(X_train_noisy, X_train, epochs=20, batch_size=256,
+             validation_data=(X_test_noisy, X_test), callbacks=[early_stop])
+
+# (b) SPARSE AE
+inp2 = layers.Input(shape=(784,))
+x = layers.Dense(128, activation="relu")(inp2)
+code2 = layers.Dense(32, activation="relu",
+                     activity_regularizer=regularizers.l1(1e-5))(x)    # L1 on code
+x = layers.Dense(128, activation="relu")(code2)
+out2 = layers.Dense(784, activation="sigmoid")(x)
+
+sae = models.Model(inp2, out2)
+sae.compile(optimizer="adam", loss="mse")
+h2 = sae.fit(X_train, X_train, epochs=20, batch_size=256,
+             validation_data=(X_test, X_test), callbacks=[early_stop])
+
+# PLOTS
+plt.plot(h1.history["val_loss"], label="Denoising AE")
+plt.plot(h2.history["val_loss"], label="Sparse AE")
+plt.xlabel("epoch"); plt.ylabel("val loss"); plt.legend(); plt.show()
+
+denoised = dae.predict(X_test_noisy[:8])
+sparse_rec = sae.predict(X_test[:8])
+rows = [X_test_noisy[:8], denoised, X_test[:8], sparse_rec]
+names = ["Noisy", "Denoised", "Original", "Sparse recon."]
+plt.figure(figsize=(14, 6))
+for r in range(4):
+    for i in range(8):
+        plt.subplot(4, 8, r * 8 + i + 1)
+        plt.imshow(rows[r][i].reshape(28, 28), cmap="gray"); plt.axis("off")
+        if i == 0:
+            plt.title(names[r], fontsize=8, loc="left")
+plt.show()
