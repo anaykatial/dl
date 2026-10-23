@@ -1,0 +1,42 @@
+import matplotlib.pyplot as plt
+from sklearn.datasets import fetch_california_housing
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from tensorflow import keras
+
+# DATA
+data = fetch_california_housing()
+X, y = data.data, data.target
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+X_train_A = X_train[:, :5]
+X_train_B = X_train[:, 2:]
+X_test_A = X_test[:, :5]
+X_test_B = X_test[:, 2:]
+
+# MODEL
+input_A = keras.layers.Input(shape=(5,))
+input_B = keras.layers.Input(shape=(6,))
+hidden1 = keras.layers.Dense(30, activation="relu")(input_B)
+# variations here: BatchNorm / Dropout / l2
+hidden2 = keras.layers.Dense(30, activation="relu")(hidden1)
+concat = keras.layers.Concatenate()([input_A, hidden2])
+output = keras.layers.Dense(1)(concat)
+
+model = keras.Model([input_A, input_B], output)
+model.compile(optimizer="adam", loss="mse")
+
+early_stop = keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True)
+history = model.fit([X_train_A, X_train_B], y_train, epochs=20,
+                    validation_split=0.2, callbacks=[early_stop])
+model.evaluate([X_test_A, X_test_B], y_test)
+print(model.predict([X_test_A[:3], X_test_B[:3]]))
+
+# PLOT
+plt.plot(history.history["loss"], label="train loss")
+plt.plot(history.history["val_loss"], label="val loss")
+plt.xlabel("epoch"); plt.ylabel("loss"); plt.legend(); plt.show()
